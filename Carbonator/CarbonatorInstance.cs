@@ -63,8 +63,8 @@ namespace Crypton.Carbonator
             }
 
             // start collection and reporting timers
-            _metricCollectorTimer = new Timer(collectMetrics, new StateControl(), conf.CollectionInterval, conf.CollectionInterval);
-            _metricReporterTimer = new Timer(reportMetrics, new StateControl(), conf.ReportingInterval, conf.ReportingInterval);
+            _metricCollectorTimer = new Timer(collectMetrics, new StateControl(), conf.CollectionInterval, Timeout.Infinite);
+            _metricReporterTimer = new Timer(reportMetrics, new StateControl(), conf.ReportingInterval, Timeout.Infinite);
 
             if (conf.LogLevel >= 1)
                 EventLog.WriteEntry(Program.EVENT_SOURCE, "Carbonator service has been initialized and began reporting metrics", EventLogEntryType.Information);
@@ -165,14 +165,12 @@ namespace Crypton.Carbonator
             timeTaken.Stop();
 
             // adjust how often we collect metrics to stay within hysteresis
-            int periodTime = (int)Math.Abs(1000 - (int)timeTaken.ElapsedMilliseconds);
-            if (periodTime > 100 && periodTime <= 1000)
+            if (timeTaken.ElapsedMilliseconds < conf.CollectionInterval - 1000)
             {
-                _metricCollectorTimer.Change(100, periodTime);
-                if (Config.CarbonatorSection.Current.LogLevel >= 4)
-                    EventLog.WriteEntry(Program.EVENT_SOURCE, string.Format("Adjusted _metricCollector periodTime={0}ms", periodTime), EventLogEntryType.Information);
+                _metricCollectorTimer.Change(Math.Max(0, conf.CollectionInterval - timeTaken.ElapsedMilliseconds), Timeout.Infinite);
+            } else {
+                _metricCollectorTimer.Change(conf.CollectionInterval), Timeout.Infinite);
             }
-
             control.IsRunning = false;
         }
 
@@ -256,6 +254,15 @@ namespace Crypton.Carbonator
                         }
                     }
                 }
+            }
+
+            if (timeTaken.ElapsedMilliseconds < conf.ReportingInterval - 1000)
+            {
+                _metricReporterTimer.Change(conf.ReportingInterval - timeTaken.ElapsedMilliseconds, Timeout.Infinite);
+            }
+            else
+            {
+                _metricReporterTimer.Change(conf.ReportingInterval, Timeout.Infinite);
             }
 
             control.IsRunning = false;
